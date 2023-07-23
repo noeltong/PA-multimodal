@@ -174,7 +174,7 @@ def train(config, workdir, train_dir='train'):
             noisy_img = DAS.signal_to_image(masked_sig)
             with torch.cuda.amp.autocast(enabled=True):
                 img_hat, sig_hat = model(noisy_img, masked_sig)
-                loss = criterion(img_hat, img) + criterion(sig_hat, sig)
+                loss = criterion(img_hat, img) + 0.128 * criterion(sig_hat, sig)
 
             train_loss_epoch.update(loss.item(), img.shape[0])
 
