@@ -44,7 +44,7 @@ def get_config():
     data.num_workers = 2
     data.prefetch_factor = 1
     data.num_known = 32
-    data.mask = 'random_mask'
+    data.mask = 'uniform'
     data.resolution = 128
     data.path = '/storage/data/tongshq/dataset/mice/npy'
     data.len_sig = 1000

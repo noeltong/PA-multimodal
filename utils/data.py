@@ -5,6 +5,7 @@ import os
 import random
 from torchvision import transforms as T
 import numpy as np
+from tqdm import tqdm
 
 
 class data_prefetcher():
@@ -61,27 +62,27 @@ class MiceMMDataset(Dataset):
     def __init__(self, path):
         super().__init__()
         all_paths = glob(os.path.join(path, "train", "*.npz"))
-        self.data = []
-        for path in all_paths:
+        all_paths = all_paths[:200]
+        self.all_data = []
+        for path in tqdm(all_paths, total=len(all_paths)):
             data = np.load(path)
-            self.data.append([data['gt'][None, ...], data['sinogram'][None, ...]])
+            self.all_data.append([data['gt'][None, ...], data['sinogram'][None, ...]])
 
     def __len__(self):
-        return len(self.gt)
+        return len(self.all_data)
     
     def __getitem__(self, idx):
-        gt, sinogram = self.data[idx]
-        gt = torch.from_numpy(gt)
-        sinogram = torch.from_numpy(sinogram)
-        sinogram = self.channel_random_shift(sinogram)
+        gt, sinogram = self.all_data[idx]
+        gt = torch.from_numpy(gt).float()
         sinogram = torch.from_numpy(sinogram).float()
+        gt, sinogram = self.random_shift_rotate(gt, sinogram)
         
         return gt, sinogram
     
     @torch.no_grad()
     def random_shift_rotate(self, gt, sinogram):
         split = random.randint(0, 127)
-        sinogram = torch.cat([sinogram[..., split:], sinogram[..., :split]], dim=1)
+        sinogram = torch.cat([sinogram[..., split:], sinogram[..., :split]], dim=-1)
         gt = T.functional.rotate(gt, -split * 360 / 128)
         return gt, sinogram
     
@@ -153,6 +154,8 @@ def get_mask_fn(args):
             mask = random_mask(x, axis, n_keep)
         elif mask_type == 'limited':
             mask = limited_view(x, axis, n_keep)
+        else:
+            raise ValueError(f'Sampling pattern {mask_type} unsupported!')
 
         # x_masked = mask * x
 
