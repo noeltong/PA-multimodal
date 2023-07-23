@@ -10,8 +10,8 @@ def get_config():
     # ----------------
 
     training = cfg.training = ConfigDict()
-    training.num_epochs = 100
-    training.batch_size = 64
+    training.num_epochs = 150
+    training.batch_size = 32
     training.save_ckpt_freq = 10
     training.eval_freq = 10
 
@@ -21,9 +21,7 @@ def get_config():
 
     model = cfg.model = ConfigDict()
     model.clip_grad_norm = 1.
-    model.ema = True
-    model.ema_rate = 0.999
-    model.ema_steps = 1
+    model.embed_dim = 64
 
     # ----------------
     # Optimization
@@ -45,6 +43,12 @@ def get_config():
     cfg.data = data = ConfigDict()
     data.num_workers = 2
     data.prefetch_factor = 1
+    data.num_known = 32
+    data.mask = 'random_mask'
+    data.resolution = 128
+    data.path = '/storage/data/tongshq/dataset/mice/npy'
+    data.len_sig = 1000
+    data.num_sig = 128
 
     cfg.seed = 42
     cfg.distributed = True
