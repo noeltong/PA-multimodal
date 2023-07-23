@@ -3,16 +3,17 @@ import os
 import torch
 from torch import nn
 from torch.nn import functional as F
-from utils.data import MyDataset
+from utils.data import load_data, data_prefetcher, get_mask_fn
 from utils.time import time_calculator
 from torch.nn.parallel import DistributedDataParallel
 import torch.distributed as dist
 from utils.optim import get_optim
 from utils.utils import seed_everything
 from torch.utils.tensorboard import SummaryWriter
-from models.model import MyModel
+from models.uformer import MMUformer
 from models.ema import ExponentialMovingAverage
 from utils.utils import AverageMeter
+from utils.PAT import DAS_operator
 
 def train(config, workdir, train_dir='train'):
     """Runs the training pipeline.
@@ -77,12 +78,17 @@ def train(config, workdir, train_dir='train'):
     if rank == 0:
         logger.info('Loading data...')
 
-    # train_loader, test_loader, train_sampler, test_sampler = pass
-
+    train_loader, test_loader, train_sampler, test_sampler = load_data(config)
     dist.barrier()
 
     if rank == 0:
         logger.info('Data loaded.')
+    
+    # -------------------
+    # Define DAS
+    # -------------------
+
+    DAS = DAS_operator(config)
 
     # -------------------
     # Initialize model
@@ -91,22 +97,21 @@ def train(config, workdir, train_dir='train'):
     if rank == 0:
         logger.info('Begin model initialization...')
 
-    model = MyModel()
+    model = MMUformer(
+        img_size=config.data.resolution,
+        embed_dim=config.model.embed_dim,
+        win_size=8,
+        token_projection='linear',
+        token_mlp='leff',
+        modulator=True
+    )
 
-    # model = nn.SyncBatchNorm.convert_sync_batchnorm(model)
+    model = nn.SyncBatchNorm.convert_sync_batchnorm(model)
     # If model has BNs...
 
     model = model.cuda()
     model = DistributedDataParallel(model, device_ids=[rank])
     model_without_ddp = model.module
-
-    if config.model.ema:
-        adjust = config.training.batch_size * \
-            config.model.ema_steps / config.training.num_epochs
-        alpha = 1 - config.model.ema_rate
-        alpha = 1 - min(1.0, alpha * adjust)
-        model_ema = ExponentialMovingAverage(
-            model_without_ddp, device=device, decay=alpha)
 
     if rank == 0:
         logger.info("Models initialized.")
@@ -121,7 +126,7 @@ def train(config, workdir, train_dir='train'):
         logger.info('Handling optimizations...')
 
     optimizer, scheduler = get_optim(model, config)
-    criterion = nn.CosineSimilarity(dim=1).cuda()
+    criterion = nn.MSELoss().cuda()
 
     if rank == 0:
         logger.info('Completed.')
@@ -136,6 +141,8 @@ def train(config, workdir, train_dir='train'):
 
     best_loss = 999999999.
     iters_per_epoch = len(train_loader)
+
+    mask_fn = get_mask_fn(config)
 
     dist.barrier()
     torch.cuda.empty_cache()
@@ -153,20 +160,23 @@ def train(config, workdir, train_dir='train'):
         # initialize data prefetcher
         # ----------------------------
 
-        train_prefetcher = prefetcher(train_loader, rank)
-        x, y = train_prefetcher.next()
+        train_prefetcher = data_prefetcher(train_loader, rank)
+        img, sig = train_prefetcher.next()
         i = 0
 
         # ----------------------------
         # run the training process
         # ----------------------------
 
-        while x is not None:
+        while img is not None:
+            mask = mask_fn(sig)
+            masked_sig = mask * sig
+            noisy_img = DAS.signal_to_image(masked_sig)
             with torch.cuda.amp.autocast(enabled=True):
-                out = model(x)
-                loss = criterion(out, y)
+                img_hat, sig_hat = model(noisy_img, masked_sig)
+                loss = criterion(img_hat, img) + criterion(sig_hat, sig)
 
-            train_loss_epoch.update(loss.item(), x.shape[0])
+            train_loss_epoch.update(loss.item(), img.shape[0])
 
             if rank == 0:
                 writer.add_scalar("Loss", train_loss_epoch.val,
@@ -186,10 +196,7 @@ def train(config, workdir, train_dir='train'):
             scaler.step(optimizer)
             scaler.update()
 
-            if config.model.ema and i % config.model.ema_steps == 0:
-                model_ema.update_parameters(model)
-
-            x, y = train_prefetcher.next()
+            img, sig = train_prefetcher.next()
             i += 1
 
         scheduler.step()
@@ -211,8 +218,6 @@ def train(config, workdir, train_dir='train'):
                     'scheduler': scheduler.state_dict(),
                     'scaler': scaler.state_dict()
                 }
-                if config.model.ema:
-                    snapshot['model_ema'] = model_ema.state_dict()
                 torch.save(snapshot, os.path.join(
                     ckpt_dir, f'{epoch+1}_loss_{train_loss_epoch.avg:.2f}.pth'))
 
@@ -222,8 +227,7 @@ def train(config, workdir, train_dir='train'):
             if rank == 0:
                 logger.info(
                     f'Saving best model state dict at epoch {epoch + 1}.')
-                torch.save(model_ema.state_dict() if config.model.ema else model_without_ddp.state_dict,
-                           os.path.join(ckpt_dir, 'best.pth'))
+                torch.save(model_without_ddp.state_dict, os.path.join(ckpt_dir, 'best.pth'))
 
         # Report loss on eval dataset periodically
 
@@ -231,7 +235,7 @@ def train(config, workdir, train_dir='train'):
             if rank == 0:
                 logger.info(f'Start evaluate at epoch {epoch + 1}.')
 
-            eval_model = model_ema if config.model.ema else model_without_ddp
+            eval_model = model_without_ddp
             # eval_model = model_without_ddp
             with torch.inference_mode():
                 eval_model.eval()
@@ -242,20 +246,23 @@ def train(config, workdir, train_dir='train'):
                 # initialize data prefetcher
                 # ----------------------------
 
-                test_prefetcher = prefetcher(test_loader, rank, mode='train')
-                x, y = test_prefetcher.next()
+                test_prefetcher = data_prefetcher(test_loader, rank)
+                img, sig = test_prefetcher.next()
                 i = 0
 
-                while x is not None:
+                while img is not None:
+                    mask = mask_fn(sig)
+                    masked_sig = mask * sig
+                    noisy_img = DAS.signal_to_image(masked_sig)
                     with torch.cuda.amp.autocast(enabled=True):
-                        out = model(x)
-                        loss = criterion(out, y)
+                        img_hat, sig_hat = model(noisy_img, masked_sig)
+                        loss = criterion(img_hat, img) + criterion(sig_hat, sig)
 
-                    eval_loss_epoch.update(loss.item(), x.shape[0])
+                    eval_loss_epoch.update(loss.item(), img.shape[0])
                     logger.info(
                         f'Epoch: {epoch + 1}/{config.training.num_epochs}, Iter: {i + 1}/{iters_per_eval}, Loss: {eval_loss_epoch.val:.6f}, Time: {time_logger.time_length()}, Device: {rank}')
 
-                    x, y = test_prefetcher.next()
+                    img, sig = test_prefetcher.next()
                     i += 1
 
                 if rank == 0:
