@@ -21,8 +21,10 @@ def main(argv):
     if FLAGS.workdir is not None:
         work_dir = os.path.join('workspace', FLAGS.workdir)
     else:
-        time_str = datetime.datetime.strftime(datetime.datetime.now(), "%Y_%m_%d_%H_%M_%S")
-        work_dir = os.path.join('workspace', f'run_{time_str}')
+        # time_str = datetime.datetime.strftime(datetime.datetime.now(), "%Y_%m_%d_%H_%M_%S")
+        # work_dir = os.path.join('workspace', f'run_{time_str}')
+        name_idx = [config.data.mask, 'batch' + str(config.training.batch_size), 'known' + str(config.data.num_known)]
+        work_dir = os.path.join('workspace', f"run_{'_'.join(name_idx)}")
 
     if FLAGS.mode == 'train':
         train(config=config, workdir=work_dir)
