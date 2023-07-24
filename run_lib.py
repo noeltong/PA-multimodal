@@ -172,9 +172,9 @@ def train(config, workdir, train_dir='train'):
             mask = mask_fn(sig)
             masked_sig = mask * sig
             noisy_img = DAS.signal_to_image(masked_sig)
-            with torch.cuda.amp.autocast(enabled=True):
+            with torch.cuda.amp.autocast(enabled=False):
                 img_hat, sig_hat = model(noisy_img, masked_sig)
-                loss = criterion(img_hat, img) + 0.128 * criterion(sig_hat, sig)
+                loss = criterion(img_hat, img) + criterion(sig_hat, sig) + criterion(DAS.signal_to_image(sig_hat), img_hat) + criterion(DAS.image_to_signal(img_hat).unsqueeze(1), sig_hat)
 
             train_loss_epoch.update(loss.item(), img.shape[0])
 
@@ -237,7 +237,7 @@ def train(config, workdir, train_dir='train'):
 
             eval_model = model_without_ddp
             # eval_model = model_without_ddp
-            with torch.inference_mode():
+            with torch.no_grad():
                 eval_model.eval()
                 iters_per_eval = len(test_loader)
                 eval_loss_epoch = AverageMeter()
