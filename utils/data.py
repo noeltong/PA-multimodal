@@ -62,7 +62,7 @@ class MiceMMDataset(Dataset):
     def __init__(self, path):
         super().__init__()
         all_paths = glob(os.path.join(path, "train", "*.npz"))
-        all_paths = all_paths[:200]
+        # all_paths = all_paths[:200]
         self.all_data = []
         for path in tqdm(all_paths, total=len(all_paths)):
             data = np.load(path)
@@ -125,13 +125,13 @@ def random_mask(x, axis=2, n_keep=32):
 
 @torch.no_grad()
 def uniform_mask(x, axis=2, n_keep=32):
-    mask = torch.zeros_like(x)
+    mask = torch.zeros_like(x).cpu()
     mask_axis = max_gap_interval(x.shape[axis], n_keep)
     mask_shape = [slice(None)] * x.dim()
     mask_shape[axis] = mask_axis
     mask[tuple(mask_shape)] = 1.
 
-    return mask
+    return mask.cuda()
 
 @torch.no_grad()
 def limited_view(x, axis=2, n_keep=32):
@@ -147,7 +147,7 @@ def limited_view(x, axis=2, n_keep=32):
 @torch.no_grad()
 def get_mask_fn(args):
     mask_type = args.data.mask
-    def mask_fn(x, axis=2, n_keep=args.data.num_known):
+    def mask_fn(x, axis=-1, n_keep=args.data.num_known):
         if mask_type == 'uniform':
             mask = uniform_mask(x, axis, n_keep)
         elif mask_type == 'random':
