@@ -10,8 +10,8 @@ def get_config():
     # ----------------
 
     training = cfg.training = ConfigDict()
-    training.num_epochs = 150
-    training.batch_size = 32
+    training.num_epochs = 200
+    training.batch_size = 4
     training.save_ckpt_freq = 10
     training.eval_freq = 10
 
@@ -44,11 +44,12 @@ def get_config():
     data.num_workers = 2
     data.prefetch_factor = 1
     data.num_known = 32
-    data.mask = 'uniform'
+    data.mask = 'random'
     data.resolution = 128
     data.path = '/storage/data/tongshq/dataset/mice/npy'
     data.len_sig = 1000
     data.num_sig = 128
+    data.num_known = 32
 
     cfg.seed = 42
     cfg.distributed = True
