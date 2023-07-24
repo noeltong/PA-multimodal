@@ -1518,14 +1518,14 @@ class MMUformer(nn.Module):
         # Input Projection
         y_1 = self.input_proj_img(img)
         img_embed = self.token_type_embedding(
-            torch.zeros(size=[*list(y_1.shape)[:-1]], dtype=torch.long)
+            torch.zeros(size=[*list(y_1.shape)[:-1]], dtype=torch.long).to(img.device)
         )
         y_1 = self.pos_drop(y_1 + img_embed)
 
         Q, R = torch.linalg.qr(sig)
         y_2 = self.input_proj_sig(R)
         sig_embed = self.token_type_embedding(
-            torch.ones(size=[*list(y_2.shape)[:-1]], dtype=torch.long)
+            torch.ones(size=[*list(y_2.shape)[:-1]], dtype=torch.long).to(sig.device)
         )
         y_2 = self.pos_drop(y_2 + sig_embed)
 
