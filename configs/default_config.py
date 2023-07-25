@@ -11,7 +11,7 @@ def get_config():
 
     training = cfg.training = ConfigDict()
     training.num_epochs = 200
-    training.batch_size = 4
+    training.batch_size = 8
     training.save_ckpt_freq = 50
     training.eval_freq = 10
 
