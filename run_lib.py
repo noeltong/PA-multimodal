@@ -11,7 +11,6 @@ from utils.optim import get_optim
 from utils.utils import seed_everything
 from torch.utils.tensorboard import SummaryWriter
 from models.uformer import MMUformer
-from models.ema import ExponentialMovingAverage
 from utils.utils import AverageMeter
 from utils.PAT import DAS_operator
 from models.losses import MixedLoss
