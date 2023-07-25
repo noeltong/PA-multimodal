@@ -14,6 +14,7 @@ from models.uformer import MMUformer
 from models.ema import ExponentialMovingAverage
 from utils.utils import AverageMeter
 from utils.PAT import DAS_operator
+from models.losses import MixedLoss
 
 def train(config, workdir, train_dir='train'):
     """Runs the training pipeline.
@@ -126,7 +127,7 @@ def train(config, workdir, train_dir='train'):
         logger.info('Handling optimizations...')
 
     optimizer, scheduler = get_optim(model, config)
-    criterion = nn.MSELoss().cuda()
+    criterion = MixedLoss().cuda()
 
     if rank == 0:
         logger.info('Completed.')
@@ -174,7 +175,7 @@ def train(config, workdir, train_dir='train'):
             noisy_img = DAS.signal_to_image(masked_sig)
             with torch.cuda.amp.autocast(enabled=False):
                 img_hat, sig_hat = model(noisy_img, masked_sig)
-                loss = criterion(img_hat, img) + criterion(sig_hat, sig) + criterion(DAS.signal_to_image(sig_hat), img_hat) + criterion(DAS.image_to_signal(img_hat).unsqueeze(1), sig_hat)
+                loss = torch.mean(criterion(img_hat, img) + criterion(sig_hat, sig) + criterion(DAS.signal_to_image(sig_hat), img_hat) + criterion(DAS.image_to_signal(img_hat).unsqueeze(1), sig_hat))
 
             train_loss_epoch.update(loss.item(), img.shape[0])
 
@@ -256,7 +257,7 @@ def train(config, workdir, train_dir='train'):
                     noisy_img = DAS.signal_to_image(masked_sig)
                     with torch.cuda.amp.autocast(enabled=True):
                         img_hat, sig_hat = model(noisy_img, masked_sig)
-                        loss = criterion(img_hat, img) + criterion(sig_hat, sig)
+                        loss = torch.mean(criterion(img_hat, img) + criterion(sig_hat, sig) + criterion(DAS.signal_to_image(sig_hat), img_hat) + criterion(DAS.image_to_signal(img_hat).unsqueeze(1), sig_hat))
 
                     eval_loss_epoch.update(loss.item(), img.shape[0])
                     logger.info(
