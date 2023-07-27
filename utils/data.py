@@ -64,7 +64,8 @@ class MiceMMDataset(Dataset):
         all_paths = glob(os.path.join(path, "train", "*.npz"))
         # all_paths = all_paths[:200]
         self.all_data = []
-        for path in tqdm(all_paths, total=len(all_paths)):
+        # for path in tqdm(all_paths, total=len(all_paths)):
+        for path in all_paths:
             data = np.load(path)
             self.all_data.append([data['gt'][None, ...], data['sinogram'][None, ...]])
 
