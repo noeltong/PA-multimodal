@@ -45,7 +45,7 @@ def train(config, workdir, train_dir='train'):
     if config.use_deterministic_algorithms:
         os.environ['CUBLAS_WORKSPACE_CONFIG'] = ':4096:8'
         torch.backends.cudnn.deterministic = True
-        torch.use_deterministic_algorithms(True)
+        torch.use_deterministic_algorithms(True, warn_only=True)
 
     # -----------------------------
     # Create directories for data
@@ -254,7 +254,7 @@ def train(config, workdir, train_dir='train'):
                     mask = mask_fn(sig)
                     masked_sig = mask * sig
                     noisy_img = DAS.signal_to_image(masked_sig)
-                    with torch.cuda.amp.autocast(enabled=True):
+                    with torch.cuda.amp.autocast(enabled=False):
                         img_hat, sig_hat = model(noisy_img, masked_sig)
                         loss = torch.mean(criterion(img_hat, img) + criterion(sig_hat, sig) + criterion(DAS.signal_to_image(sig_hat), img_hat) + criterion(DAS.image_to_signal(img_hat).unsqueeze(1), sig_hat))
 

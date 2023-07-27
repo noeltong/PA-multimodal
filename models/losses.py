@@ -3,14 +3,14 @@ import torch
 from torchmetrics.image import MultiScaleStructuralSimilarityIndexMeasure
 
 class MixedLoss(nn.Module):
-    def __init__(self, alpha=0.75) -> None:
+    def __init__(self, alpha=0.25) -> None:
         super().__init__()
         self.ms_ssim = MultiScaleStructuralSimilarityIndexMeasure(kernel_size=3, betas=(0.0448, 0.2856, 0.3001))
         self.l1 = CharbonnierLoss(eps=1e-5)
         self.alpha = alpha
 
     def forward(self, x, y):
-        return self.alpha * self.ms_ssim(x, y) + (1 - self.alpha) * self.l1(x, y)
+        return self.alpha * (1 - self.ms_ssim(x, y)) + (1 - self.alpha) * self.l1(x, y)
     
 
 class CharbonnierLoss(nn.Module):
